@@ -1,9 +1,118 @@
 import numpy as np
+from sklearn.metrics import accuracy_score
 
+#seed random to get the same weights every run
+np.random.seed(9)
 '''
 PLR - w = w + ada(y-t)w - perceptron learning rule
 
+1. Choose small random initial weights, 𝑤! ∈ [−.05, .05]. Compute the accuracy on the training
+and test sets for this initial set of weights, to include in your plot. (Call this “epoch 0”.)
+Recall that the bias unit is always set to 1, and the bias weight is treated like any other weight.
+
+2. Repeat: cycle through the training data, changing the weights (according to the perceptron
+learning rule) after processing each training example xk , as follows:
+
+• Compute 𝒘 ∙ 𝒙(i) at each output unit.
+
+• The unit with the highest value of 𝒘 ∙ 𝒙(i) is the prediction for this training example.
+
+• If this is the correct prediction, don’t change the weights and go on to the next
+training example.
+
+• Otherwise, update all weights in the perceptron:
+𝑤i ⟵𝑤i +𝜂 𝑡(i) −𝑦(i) 𝑥 i(i) ,
+where
+𝑡(i) =
+and
+1 if the ouput unit is the correct one for this training example
+0 otherwise
+𝑦(i) =
+1 if 𝒘 ∙ 𝒙(i) >0 0
+otherwise
+Thus, 𝑡(i) −𝑦(i) can be 1, 0, or −1.
+
 '''
 
-train = np.load()
-p_out = 10 #using 10 outputs
+#gather all the variables and setup
+train = np.loadtxt("data/mnist_train.csv", delimiter = ",", skiprows = 1) #first value is the header *from kaggle
+test = np.loadtxt("data/mnist_test.csv", delimiter = ",", skiprows = 1)
+
+#all columns but the first label
+x = train[:, 1:] #shape (60000,784)
+
+#grab the labels shape(60000, ) w/ index 0 
+label = train[:, 0]
+
+#preprocess the data to keep weights down
+x = x/255 
+
+#create the bias column with 1's
+#add it to x using np.hstack
+bias = np.ones([x.shape[0], 1]) 
+x = np.hstack([x,bias]) #new shape (60000,785)
+
+#compute w * x so lets make a weights array for 10 perceptrons
+w = np.random.uniform(-0.5, 0.5, size = (785,10))
+print(w.shape)
+# result = np.dot(x,w) #-> w*x  xTranspose lets me use the dot function
+
+print("Data loaded...\n")
+
+#3 learning rates and epochs
+l_rate1 = 0.001
+l_rate2 = 0.01
+l_rate3 = 0.1
+epochs = 60
+
+#preprocessing the data and setup complete
+
+train_acc = []
+test_acc = []
+
+ep0_train_pre = np.argmax(np.dot(x,w), axis = 1)
+ep0_test_acc = accuracy_score(ep0_train_pre, label) * 100
+
+print("Training accuracy: ", ep0_train_pre)
+print(f"Test Accuracy based on training: {ep0_test_acc:.2f}")
+train_acc.append(ep0_test_acc) #add to the array to keep
+
+#now we loop over ptrons and data for epochs
+
+for epoch in range(1, epochs + 1): #move past the 0
+    true = 0
+
+    for i in range(x.shape[0]): #range of the data 
+        #grab current values
+        data = x[i]
+        truth = int(label[i])
+
+        result = np.dot(data, w)
+        pred = np.argmax(result)
+
+        #if the pred is = to the truth, then we were correct
+        #no need to update anything
+        if pred == truth:
+            true += 1 
+
+        #otherwise update the weights
+        else:
+            y = (result > 0).astype(int)
+
+            #encode the "one hot" in the correct location
+            t_vec = np.zeros(10)
+            t_vec[truth] = 1
+
+            #update with plr
+            for j in range(10): #ie all perceptrons
+                w[:, j] = w[:, j] + l_rate1 * (t_vec[j] - y[j]) * data
+
+    
+    acc = (true / x.shape[0]) * 100 #accuracy across the data
+    train_acc.append(acc)
+
+    print(f"Epoch{epoch}: - Accuracy: {acc:.2f}") 
+
+
+
+
