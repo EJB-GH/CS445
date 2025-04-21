@@ -1,8 +1,10 @@
 import numpy as np
-from sklearn.metrics import accuracy_score
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score,  confusion_matrix
+import seaborn as sns
 
 #seed random to get the same weights every run
-np.random.seed(9)
+# np.random.seed(9)
 '''
 PLR - w = w + ada(y-t)w - perceptron learning rule
 
@@ -40,22 +42,26 @@ test = np.loadtxt("data/mnist_test.csv", delimiter = ",", skiprows = 1)
 
 #all columns but the first label
 x = train[:, 1:] #shape (60000,784)
+z = test[:, 1:] #test grab
 
 #grab the labels shape(60000, ) w/ index 0 
 label = train[:, 0]
+z_label = test[:, 0]
 
 #preprocess the data to keep weights down
 x = x/255 
+z = z/255
+print(z.shape)
 
 #create the bias column with 1's
 #add it to x using np.hstack
 bias = np.ones([x.shape[0], 1]) 
-x = np.hstack([x,bias]) #new shape (60000,785)
+z_bias = np.ones([z.shape[0], 1])
+x = np.hstack([x, bias]) #new shape (60000,785)
+z = np.hstack([z, z_bias])
 
 #compute w * x so lets make a weights array for 10 perceptrons
 w = np.random.uniform(-0.5, 0.5, size = (785,10))
-print(w.shape)
-# result = np.dot(x,w) #-> w*x  xTranspose lets me use the dot function
 
 print("Data loaded...\n")
 
@@ -63,12 +69,13 @@ print("Data loaded...\n")
 l_rate1 = 0.001
 l_rate2 = 0.01
 l_rate3 = 0.1
-epochs = 60
+epochs = 70
 
 #preprocessing the data and setup complete
-
 train_acc = []
 test_acc = []
+confusion = np.zeros([10,10])
+
 
 ep0_train_pre = np.argmax(np.dot(x,w), axis = 1)
 ep0_test_acc = accuracy_score(ep0_train_pre, label) * 100
@@ -76,6 +83,7 @@ ep0_test_acc = accuracy_score(ep0_train_pre, label) * 100
 print("Training accuracy: ", ep0_train_pre)
 print(f"Test Accuracy based on training: {ep0_test_acc:.2f}")
 train_acc.append(ep0_test_acc) #add to the array to keep
+test_acc.append(ep0_test_acc) #keep for later
 
 #now we loop over ptrons and data for epochs
 
@@ -105,13 +113,58 @@ for epoch in range(1, epochs + 1): #move past the 0
 
             #update with plr
             for j in range(10): #ie all perceptrons
-                w[:, j] = w[:, j] + l_rate1 * (t_vec[j] - y[j]) * data
+                w[:, j] = w[:, j] + l_rate3 * (t_vec[j] - y[j]) * data
 
+        
+    #end of each epoch compare to the test set
+    #and training set
     
-    acc = (true / x.shape[0]) * 100 #accuracy across the data
-    train_acc.append(acc)
+    t_result = np.dot(z, w)
+    t_pred = np.argmax(t_result, axis = 1)
+    t_acc = accuracy_score(t_pred, z_label) * 100
 
-    print(f"Epoch{epoch}: - Accuracy: {acc:.2f}") 
+    pred = np.argmax(np.dot(x,w), axis = 1)
+    acc = accuracy_score(pred, label) * 100
+
+
+    #shuffle the data
+    index = np.arange(x.shape[0])
+    np.random.shuffle(index)
+    x = x[index]
+    label = label[index] #first try did not realign the labels and the success tanked
+
+    train_acc.append(acc)
+    test_acc.append(t_acc)
+
+    #print(f"Epoch{epoch}:  Test Accuracy: {t_acc:.2f} - Accuracy: {acc:.2f}") 
+
+conf_pred = []
+conf_truth = []
+raw_con = np.zeros([10,10], dtype = int)
+
+for i in range(z.shape[0]):
+    result = np.dot(z[i],w)
+    pred = np.argmax(result)
+    conf_pred.append(pred)
+    conf_truth.append(z_label[i])
+    raw_con[int(z_label[i])][pred] += 1
+
+print(raw_con)
+
+
+
+
+
+plt.plot(train_acc, label = 'Training')
+plt.plot(test_acc, label = 'Test')
+plt.title('LR = 0.1')
+plt.legend()
+plt.ylabel('Accuracy (%)')
+plt.xlabel('Epoch')
+plt.ylim(80,100)
+plt.show()
+
+
 
 
 
