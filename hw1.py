@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score,  confusion_matrix
-import seaborn as sns
+import time
 
 #seed random to get the same weights every run
 # np.random.seed(9)
@@ -37,8 +37,8 @@ Thus, 𝑡(i) −𝑦(i) can be 1, 0, or −1.
 '''
 
 #gather all the variables and setup
-train = np.loadtxt("data/mnist_train.csv", delimiter = ",", skiprows = 1) #first value is the header *from kaggle
-test = np.loadtxt("data/mnist_test.csv", delimiter = ",", skiprows = 1)
+train = np.loadtxt("CS445/data/mnist_train.csv", delimiter = ",", skiprows = 1) #first value is the header *from kaggle
+test = np.loadtxt("CS445/data/mnist_test.csv", delimiter = ",", skiprows = 1)
 
 #all columns but the first label
 x = train[:, 1:] #shape (60000,784)
@@ -87,9 +87,10 @@ test_acc.append(ep0_test_acc) #keep for later
 
 #now we loop over ptrons and data for epochs
 
+start = time.time()
 for epoch in range(1, epochs + 1): #move past the 0
     true = 0
-
+    start = time.time()
     for i in range(x.shape[0]): #range of the data 
         #grab current values
         data = x[i]
@@ -113,7 +114,7 @@ for epoch in range(1, epochs + 1): #move past the 0
 
             #update with plr
             for j in range(10): #ie all perceptrons
-                w[:, j] = w[:, j] + l_rate3 * (t_vec[j] - y[j]) * data
+                w[:, j] = w[:, j] + l_rate1 * (t_vec[j] - y[j]) * data
 
         
     #end of each epoch compare to the test set
@@ -136,7 +137,8 @@ for epoch in range(1, epochs + 1): #move past the 0
     train_acc.append(acc)
     test_acc.append(t_acc)
 
-    #print(f"Epoch{epoch}:  Test Accuracy: {t_acc:.2f} - Accuracy: {acc:.2f}") 
+    end = time.time()
+    print(f"Epoch{epoch}:  Test Accuracy: {t_acc:.2f} - Accuracy: {acc:.2f} Time: {end - start:.2f}") 
 
 conf_pred = []
 conf_truth = []
