@@ -4,7 +4,6 @@ from torch import nn
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets
 from torchvision.transforms import ToTensor
-import torch.optim as opt
 import matplotlib.pyplot as plt
 import time
 from sklearn.metrics import confusion_matrix, accuracy_score
@@ -54,6 +53,8 @@ h2 = 50
 h3 = 100
 train_acc = []
 test_acc = []
+lr = .1
+momentum = 0.9
 
 #this is specifically for Exp3 creating percentage data splits for testing use TTS
 split_labels = training_data.targets.numpy()
@@ -65,34 +66,50 @@ quarter, _ = train_test_split(split_index, train_size=.25, shuffle=True, stratif
 half, _ = train_test_split(split_index, train_size=.5, shuffle=True, stratify=split_labels)
 
 #store them for iterations
-sets = [(quarter), (half)]
+sets = [(half)]
+
+def sigmoid(x):
+    #sigmoid equation as denoted in lecture
+    moid = 1 / (1 + torch.exp(-x))
+    return moid
+
+def loss(pred, truth):
+    #we defined loss as 1/2(t - y)^2
+    loss = .5 * ((truth - pred)**2) #"squared loss"
+    return loss
 
 
 
-class NeuralNetwork(nn.Module):
+
+class NeuralNetwork():
     def __init__(self, h_size): #take the variable hidden size as an arg
-        super().__init__()
 
         #all the setup variables for size
         self.input_size = 784 #the inputs for the 28x28
         self.hidden_size = h_size #will be variable for some experiments
         self.output_size = 10 #standard 0-9 outputs like hw1
 
-        #sigmoid required, and it included in nn library nicely
-        self.activation = nn.Sigmoid()
-
         #actual layers, pytorch.org states that bias defaults to true, so no need to include
-        #nn.Linear = (in_features, out_features, bias - this is a bool)
-        self.hidden_layer = nn.Linear(self.input_size, self.hidden_size)
-        self.output_layer = nn.Linear(self.hidden_size, self.output_size)
+        #hand defined weight and bias for the two layers
+        self.hl_w = torch.empty(self.hidden_size, self.input_size).to(device) # [20 x 784]
+        self.hl_b = torch.empty(1, self.hidden_size).to(device)
+        self.ol_w = torch.empty(self.output_size, self.hidden_size).to(device) #{20 x 784}
+        self.ol_b = torch.empty(1, self.output_size).to(device)
 
-        nn.init.uniform_(self.hidden_layer.weight, -.05, .05)
-        nn.init.ones_(self.hidden_layer.bias)
+        #doing initializations for the starting values
+        torch.nn.init.uniform_(self.hl_w, -0.05, 0.05)  
+        torch.nn.init.ones_(self.hl_b)
+        torch.nn.init.uniform_(self.ol_w, -0.05, 0.05)       
+        torch.nn.init.ones_(self.ol_b)
+        
+        #needed to create var to store the previous momentum updates
+        #like lets me copy the structure
+        self.ol_w_m = torch.zeros_like(self.ol_w).to(device)
+        self.ol_b_m = torch.zeros_like(self.ol_b).to(device)
+        self.hl_w_m = torch.zeros_like(self.hl_w).to(device)
+        self.hl_b_m = torch.zeros_like(self.hl_b).to(device)
 
-        nn.init.uniform_(self.output_layer.weight, -.05, .05)
-        nn.init.ones_(self.output_layer.bias)
-
-    def forward(self, x):
+    def forward(self, x, pred): #UPDATED
 
         #x is our data point of choice for this epoch
         x = torch.flatten(x, start_dim=1)
@@ -101,16 +118,67 @@ class NeuralNetwork(nn.Module):
         #pass inputs through the layers, then the activation function
         #forward propogate that output to the next layer, and activation then we decide the "outcome"
 
-        #layer 1
-        h_out = self.hidden_layer(x)
-        h_sig = self.activation(h_out)
+        #layer 1 mult the matrix + bias [1,SIZE]
+        h_out = torch.mm(x, self.hl_w.T) + self.hl_b 
+        h_sig = sigmoid(h_out)
 
         #the next layer gets the "squashed" output from the previous layer
-        o_out = self.output_layer(h_sig)
-        o_sig = self.activation(o_out)
+        o_out = torch.mm(h_sig, self.ol_w.T) + self.ol_b
+        o_sig = sigmoid(o_out)
 
-        #o_sig is squashed and sent back for evaluation
-        return o_sig
+        #or all are sent to backprop algo
+        if pred: return o_sig
+
+        #or all are sent to backprop algo
+        return x, h_out, h_sig, o_out, o_sig
+
+    def backprop(self, x, h_out, h_sig, o_out, o_sig, truth):
+        #take the forward outputs and calc the error
+        #first on the outputs, then hidden later
+        #then update weights
+        #er(k) = [o(1-o)] -> der of sig * (o-t)
+        '''
+        Backwards phase:
+        · compute the error at the output using:
+            δo(κ) = (yκ − tκ) yκ(1 − yκ) (4.8)
+        · compute the error in the hidden layer(s) using:
+            δh(ζ) = aζ (1 − aζ ) N∑ k=1 wζ δo(k) (4.9)
+        · update the output layer weights using:
+            wζκ ← wζκ − ηδo(κ)ahidden ζ (4.10)
+        · update the hidden layer weights using:
+            vι ← vι − ηδh(κ)x
+        '''
+        o_error = (o_sig - truth) * (o_sig * ( 1 - o_sig))
+
+        #now we need output grad
+        grad_out = torch.mm(o_error.T, h_sig) 
+        grad_out_b = o_error
+
+        #hidden grad
+        #thinking backwards, the hidden error is the ending error
+        #and how much the middle layer is connected to the output layer in this case
+        #so the error is the mm of the end error and the synaptic weight of the two layers
+        error_hid = torch.mm(o_error, self.ol_w) 
+        h_error = error_hid * (h_sig * (1 - h_sig))
+
+        grad_hid = torch.mm(h_error.T, x)
+        grad_hid_b = h_error
+
+        #now we should have what we need to update the weights/bias
+        #w = w - delta(w) 
+
+        #but with momentum, we need the previous update
+        #(lr * grad) + (momentum * previous term) 
+        self.ol_w_m = (lr * grad_out) + (momentum * self.ol_w_m)  
+        self.ol_b_m = (lr * grad_out_b) + (momentum * self.ol_b_m)
+        self.hl_w_m = (lr * grad_hid) + (momentum * self.hl_w_m)
+        self.hl_b_m = (lr * grad_hid_b) + (momentum * self.hl_b_m)
+
+        #update the weights with momentum term
+        self.ol_w -= self.ol_w_m
+        self.ol_b -= self.ol_b_m
+        self.hl_w -= self.hl_w_m
+        self.hl_b -= self.hl_b_m
 
 
 '''
@@ -160,18 +228,13 @@ def exp3_setup():
         eval_loaded = DataLoader(train,batch_size=1)
 
         #create the new model, with fresh functions
-        model = NeuralNetwork(h3).to(device)
-        sgd = opt.SGD(model.parameters(), lr=0.1, momentum=0.9)
-        error = nn.MSELoss()
-
+        model = NeuralNetwork(h3)
+    
         #train the models
-        train_model(model, sgd, error, train_loaded, epochs, test_load, eval_loaded)
+        train_model(model, train_loaded, epochs, test_load, eval_loaded)
 
 #trains the model for set epochs, prints stats and graphs etc
-def train_model(model, sgd, error, train_load, epochs, test_load):
-
-    #you have to set the model to training mode
-    model.train()
+def train_model(model, train_load, epochs, test_load, eval_loaded):
 
     #train over the epochs same looping like hw1
     for epoch in range(epochs):
@@ -181,28 +244,20 @@ def train_model(model, sgd, error, train_load, epochs, test_load):
             data, label = data.to(device), label.to(device)
             #get truth vector
             truth = target_vector(label)
+
+            #forward pass
+            x, h_out, h_sig, o_out, o_sig = model.forward(data, False)
+
+            #grab the prediction
+            result = o_sig
+
+            #lr and momentum are access in this from globals
+            model.backprop(x, h_out, h_sig, o_out, o_sig, truth)
+
+            #calc loss
+            calc_loss = loss(result, truth) 
+
             
-
-            #forward prop through the layers
-            result = model(data).to(device) #the x in the forward function defined in the class
-            
-
-            #calculate the error terms for each output
-            errors = error(result, truth).to(device)
-
-            #backprop through the layers
-            '''
-            Example
-            >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-            >>> optimizer.zero_grad()
-            >>> loss_fn(model(input), target).backward() #seems you can call the loss in the back step
-            instead of making it its own tensor
-            >>> optimizer.step()
-            '''
-            sgd.zero_grad()
-            errors.backward()
-            sgd.step()
-
             #that seems to be the basic loop
             #now we check accuracy at the end of the epoch
 
@@ -220,12 +275,12 @@ def train_model(model, sgd, error, train_load, epochs, test_load):
 
         #evaluate
         #after submission move this into a function that gets called to save redundancy
-        model.eval()
-        with torch.no_grad():
-            for i, (data, label) in enumerate(train_load):
+        
+        
+        for i, (data, label) in enumerate(eval_loaded):
                 data, label = data.to(device), label.to(device)
                 #as in hw1, get a prediction and find the max
-                result = model(data)
+                result = model.forward(data, True)
                 _, pred = torch.max(result,1)
 
                 #accuracy_score wants lists to get accuracy so use local lists
@@ -233,24 +288,23 @@ def train_model(model, sgd, error, train_load, epochs, test_load):
                 train_true.append(label.item())
 
             #test accuracy and store it for graphing
-            acc = accuracy_score(train_pred, train_true) * 100  
-            train_acc.append(acc)
+        acc = accuracy_score(train_pred, train_true) * 100  
+        train_acc.append(acc)
 
-            for j, (data, label) in enumerate(test_load):
+        for j, (data, label) in enumerate(test_load):
                 data, label = data.to(device), label.to(device)
                 #as in hw1, get a prediction and find the max
-                t_result = model(data)
+                t_result = model.forward(data, True)
                 _, t_pred = torch.max(t_result,1)
                 
                 test_pred.append(t_pred.item())
                 test_true.append(label.item())
                 
-            t_acc = accuracy_score(test_pred, test_true) * 100
-            test_acc.append(t_acc)
+        t_acc = accuracy_score(test_pred, test_true) * 100
+        test_acc.append(t_acc)
         ################################################################################
 
         #set train again and record some times, print out some stats
-        model.train()
         end = time.time()
         eval_time = end - train_time
         print(f"Epoch{epoch + 1}:  Test Accuracy: {t_acc:.2f} - Accuracy: {acc:.2f} Total Time: {end - start:.2f} Eval Time: {eval_time:.2f} Train Time: {train_time - start:.2f}")
@@ -261,7 +315,7 @@ def train_model(model, sgd, error, train_load, epochs, test_load):
 
     plt.plot(train_acc, label = 'Training')
     plt.plot(test_acc, label = 'Test')
-    plt.title(f'Hidden Layer = 20')
+    plt.title(f'Example Size - 0.5')
     plt.legend()
     plt.ylabel('Accuracy (%)')
     plt.xlabel('Epoch')
@@ -275,16 +329,9 @@ def train_model(model, sgd, error, train_load, epochs, test_load):
 #that can be removed and these can be run again if needed
 
 #create a model object
-model = NeuralNetwork(h1).to(device)
-
-#setup for some other functions using libraries
-#SGD actually defaults to lr=0.001
-sgd = opt.SGD(model.parameters(), lr=0.1, momentum=0.9)
-error = nn.MSELoss()
-
-#used in exp 1,2
-train_model(model, sgd, error, train_load, epochs, test_load)
+#model = NeuralNetwork(h3)
+#train_model(model, train_load, epochs, test_load)
 
 #exp3 runs sequentially
-#exp3_setup()
+exp3_setup()
 
