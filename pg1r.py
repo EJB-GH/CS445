@@ -19,8 +19,6 @@ output unit. The activation function for each hidden and output unit is the sigm
 function.
 '''
 
-
-
 # Download training data from open datasets.
 #from pytorch tutorial
 training_data = datasets.MNIST(
@@ -78,10 +76,7 @@ def loss(pred, truth):
     loss = .5 * ((truth - pred)**2) #"squared loss"
     return loss
 
-
-
-
-class NeuralNetwork():
+class NeuralNetwork(): #no longer inherits from module
     def __init__(self, h_size): #take the variable hidden size as an arg
 
         #all the setup variables for size
@@ -110,7 +105,6 @@ class NeuralNetwork():
         self.hl_b_m = torch.zeros_like(self.hl_b).to(device)
 
     def forward(self, x, pred): #UPDATED
-
         #x is our data point of choice for this epoch
         x = torch.flatten(x, start_dim=1)
 
@@ -168,18 +162,18 @@ class NeuralNetwork():
         #w = w - delta(w) 
 
         #but with momentum, we need the previous update
-        #(lr * grad) + (momentum * previous term) 
+        #(lr * grad) + (momentum * previous change) 
         self.ol_w_m = (lr * grad_out) + (momentum * self.ol_w_m)  
         self.ol_b_m = (lr * grad_out_b) + (momentum * self.ol_b_m)
         self.hl_w_m = (lr * grad_hid) + (momentum * self.hl_w_m)
         self.hl_b_m = (lr * grad_hid_b) + (momentum * self.hl_b_m)
 
         #update the weights with momentum term
+        #do NOT add them
         self.ol_w -= self.ol_w_m
         self.ol_b -= self.ol_b_m
         self.hl_w -= self.hl_w_m
         self.hl_b -= self.hl_b_m
-
 
 '''
 Task: Each output unit corresponds to one of the 10 classes (‘0’ to ‘9’). Set the target
@@ -245,20 +239,18 @@ def train_model(model, train_load, epochs, test_load, eval_loaded):
             #get truth vector
             truth = target_vector(label)
 
-            #forward pass
+            #forward pass, grab all the variables for the backprop algo
+            #uses the flag to get all values returned
             x, h_out, h_sig, o_out, o_sig = model.forward(data, False)
 
             #grab the prediction
+            #in the future the sig variables should have a different name
+            #created some bugs when used incorrectly
             result = o_sig
 
             #lr and momentum are access in this from globals
             model.backprop(x, h_out, h_sig, o_out, o_sig, truth)
 
-            #calc loss
-            calc_loss = loss(result, truth) 
-
-            
-            #that seems to be the basic loop
             #now we check accuracy at the end of the epoch
 
         
@@ -273,9 +265,9 @@ def train_model(model, train_load, epochs, test_load, eval_loaded):
         test_pred = []
         test_true = []
 
+        ##################################################################################
         #evaluate
         #after submission move this into a function that gets called to save redundancy
-        
         
         for i, (data, label) in enumerate(eval_loaded):
                 data, label = data.to(device), label.to(device)
@@ -321,8 +313,6 @@ def train_model(model, train_load, epochs, test_load, eval_loaded):
     plt.xlabel('Epoch')
     plt.ylim(80,100)
     plt.show()
-
-
 
 #used in exp 1,2
 #after these, train was modified to include exp3 extra data set
