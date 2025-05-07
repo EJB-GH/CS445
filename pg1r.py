@@ -71,11 +71,6 @@ def sigmoid(x):
     moid = 1 / (1 + torch.exp(-x))
     return moid
 
-def loss(pred, truth):
-    #we defined loss as 1/2(t - y)^2
-    loss = .5 * ((truth - pred)**2) #"squared loss"
-    return loss
-
 class NeuralNetwork(): #no longer inherits from module
     def __init__(self, h_size): #take the variable hidden size as an arg
 
@@ -145,6 +140,7 @@ class NeuralNetwork(): #no longer inherits from module
         o_error = (o_sig - truth) * (o_sig * ( 1 - o_sig))
 
         #now we need output grad
+        #tranpose to align shape
         grad_out = torch.mm(o_error.T, h_sig) 
         grad_out_b = o_error
 
