@@ -20,7 +20,7 @@ Key Steps GD -> x0 = random
 lr, lr2, lr3 = 0.1, 0.01, 0.001
 
 #how many steps for gd
-steps = 500
+steps = 1000
 
 def gradient(x,y):
     #get the derivatives for the variables
